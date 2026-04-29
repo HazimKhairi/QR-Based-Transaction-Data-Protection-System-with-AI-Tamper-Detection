@@ -1,10 +1,10 @@
 "use client";
-import { useEffect, useState } from "react";
-import { apiFetch, isAuthenticated } from "@/lib/api";
+import { useState } from "react";
+import { apiFetch } from "@/lib/api";
 import QRCode from "qrcode";
 import Link from "next/link";
 import Button from "@/app/components/ui/Button";
-import { CardWithHeader, Card } from "@/app/components/ui/Card";
+import { CardWithHeader } from "@/app/components/ui/Card";
 import { StatusBadge } from "@/app/components/ui/Badge";
 import {
   ShieldCheckIcon,
@@ -14,6 +14,7 @@ import {
   ExclamationTriangleIcon,
   ArrowRightIcon,
   QrCodeIcon,
+  BoltIcon,
 } from "@heroicons/react/24/outline";
 
 type GenerateQRResponse = {
@@ -32,6 +33,12 @@ type VerifyQRResponse = {
   transaction?: any;
 };
 
+type TamperDetectionInfo = {
+  analyzed: boolean;
+  anomaly_score: number;
+  is_anomaly: boolean;
+};
+
 type ProcessResponse = {
   success: boolean;
   message?: string;
@@ -40,6 +47,21 @@ type ProcessResponse = {
   currency?: string;
   completed_at?: string;
   error?: string;
+  tamper_detection?: TamperDetectionInfo;
+};
+
+type ScenarioKind = "normal" | "tampered" | "suspicious";
+
+type ScenarioResult = {
+  kind: ScenarioKind;
+  status: "running" | "success" | "blocked" | "flagged" | "error";
+  title: string;
+  detail: string;
+  amount?: number;
+  transactionRef?: string;
+  anomalyScore?: number;
+  hashOriginal?: string;
+  hashTampered?: string;
 };
 
 export default function DemoPage() {
@@ -57,7 +79,115 @@ export default function DemoPage() {
   const [tamperedString, setTamperedString] = useState<string | null>(null);
   const [tamperedQrImageUrl, setTamperedQrImageUrl] = useState<string | null>(null);
 
+  // Scenario quick-test state
+  const [scenarioResult, setScenarioResult] = useState<ScenarioResult | null>(null);
+  const [scenarioRunning, setScenarioRunning] = useState<ScenarioKind | null>(null);
+
   // Demo page is publicly accessible - no authentication required
+
+  const runScenario = async (kind: ScenarioKind) => {
+    setScenarioRunning(kind);
+    setError(null);
+
+    const config = {
+      normal: { amount: 150.0, description: "Maintenance Fee", title: "Normal Payment" },
+      tampered: { amount: 75.0, description: "Pasar Malam Booking", title: "Tampered QR" },
+      suspicious: { amount: 9999.99, description: "Unusual Bulk Payment", title: "AI Anomaly Detection" },
+    }[kind];
+
+    setScenarioResult({
+      kind,
+      status: "running",
+      title: config.title,
+      detail: "Generating encrypted QR code...",
+    });
+
+    try {
+      // Step 1: generate QR
+      const gen = await apiFetch<GenerateQRResponse>("/api/transactions/demo/generate-qr", {
+        method: "POST",
+        body: {
+          amount: config.amount,
+          description: config.description,
+          transaction_type: kind === "suspicious" ? "other" : "maintenance_fee",
+          expires_in_minutes: 30,
+        },
+      });
+
+      if (kind === "tampered") {
+        // Mutate one byte in the encrypted payload, then verify
+        const tampered = tamperString(gen.qr_code_data);
+        const verifyRes = await apiFetch<VerifyQRResponse>("/api/transactions/demo/verify-qr", {
+          method: "POST",
+          body: { qr_code_data: tampered, qr_code_hash: gen.qr_code_hash },
+        });
+
+        if (verifyRes.tampered || !verifyRes.valid) {
+          setScenarioResult({
+            kind,
+            status: "blocked",
+            title: config.title,
+            detail: verifyRes.error || "QR integrity check failed — modification detected by SHA-256 hash comparison. Transaction blocked.",
+            amount: config.amount,
+            transactionRef: gen.transaction_ref,
+            hashOriginal: gen.qr_code_hash,
+            hashTampered: tampered.slice(0, 32) + "...",
+          });
+        } else {
+          setScenarioResult({
+            kind,
+            status: "error",
+            title: config.title,
+            detail: "Unexpected: tampered QR was accepted. Hash check may be misconfigured.",
+            amount: config.amount,
+            transactionRef: gen.transaction_ref,
+          });
+        }
+        return;
+      }
+
+      // Normal + suspicious: process the QR end-to-end
+      const proc = await apiFetch<ProcessResponse>("/api/transactions/demo/process", {
+        method: "POST",
+        body: { qr_code_data: gen.qr_code_data, otp_code: "123456" },
+      });
+
+      if (!proc.success) {
+        setScenarioResult({
+          kind,
+          status: "error",
+          title: config.title,
+          detail: proc.error || proc.message || "Transaction failed",
+          amount: config.amount,
+          transactionRef: gen.transaction_ref,
+        });
+        return;
+      }
+
+      const isAnomaly = proc.tamper_detection?.is_anomaly === true;
+
+      setScenarioResult({
+        kind,
+        status: isAnomaly ? "flagged" : "success",
+        title: config.title,
+        detail: isAnomaly
+          ? `AI Isolation Forest flagged this transaction. Amount RM ${config.amount.toLocaleString()} sits outside the trained normal distribution. Anomaly score: ${proc.tamper_detection?.anomaly_score?.toFixed(4)}.`
+          : `Payment processed successfully. AES-256 decrypt + SHA-256 integrity ✓, AI anomaly score within normal bounds.`,
+        amount: proc.amount ?? config.amount,
+        transactionRef: proc.transaction_ref ?? gen.transaction_ref,
+        anomalyScore: proc.tamper_detection?.anomaly_score,
+      });
+    } catch (err: any) {
+      setScenarioResult({
+        kind,
+        status: "error",
+        title: config.title,
+        detail: err.message || "Scenario failed. Is the backend running?",
+      });
+    } finally {
+      setScenarioRunning(null);
+    }
+  };
 
   const handleGenerateQR = async () => {
     setLoading(true);
@@ -204,6 +334,146 @@ export default function DemoPage() {
           <p className="text-[var(--text-muted)]">
             Experience the complete secure QR payment process with AES encryption and AI fraud detection
           </p>
+        </div>
+
+        {/* Quick Scenarios Panel */}
+        <div className="card mb-10 overflow-hidden border-2 border-[var(--primary-soft)]">
+          <div className="p-6 border-b border-[var(--border-soft)] flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center">
+                <BoltIcon className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold">Quick Demo Scenarios</h2>
+                <p className="text-xs text-[var(--text-muted)]">One-click end-to-end scenarios for live demonstration</p>
+              </div>
+            </div>
+            {scenarioResult && (
+              <Button variant="ghost" size="sm" onClick={() => setScenarioResult(null)}>
+                Reset
+              </Button>
+            )}
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-3 p-6">
+            <button
+              onClick={() => runScenario("normal")}
+              disabled={scenarioRunning !== null}
+              className="text-left p-4 rounded-xl border-2 border-[var(--success-soft)] hover:border-[var(--success)] hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <CheckCircleIcon className="w-6 h-6 text-[var(--success)]" />
+                <span className="font-semibold">Normal Payment</span>
+              </div>
+              <p className="text-xs text-[var(--text-muted)]">RM 150 maintenance fee. Standard amount, valid OTP. Expected: ✅ Completed.</p>
+              {scenarioRunning === "normal" && (
+                <div className="mt-2 text-xs text-[var(--success)]">Running...</div>
+              )}
+            </button>
+
+            <button
+              onClick={() => runScenario("tampered")}
+              disabled={scenarioRunning !== null}
+              className="text-left p-4 rounded-xl border-2 border-[var(--danger-soft)] hover:border-[var(--danger)] hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <ExclamationTriangleIcon className="w-6 h-6 text-[var(--danger)]" />
+                <span className="font-semibold">Tampered QR</span>
+              </div>
+              <p className="text-xs text-[var(--text-muted)]">QR payload mutated after generation. Expected: 🚨 Hash mismatch, blocked.</p>
+              {scenarioRunning === "tampered" && (
+                <div className="mt-2 text-xs text-[var(--danger)]">Running...</div>
+              )}
+            </button>
+
+            <button
+              onClick={() => runScenario("suspicious")}
+              disabled={scenarioRunning !== null}
+              className="text-left p-4 rounded-xl border-2 border-[var(--warning-soft)] hover:border-[var(--warning)] hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-white"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <CpuChipIcon className="w-6 h-6 text-[var(--warning)]" />
+                <span className="font-semibold">Suspicious Activity</span>
+              </div>
+              <p className="text-xs text-[var(--text-muted)]">RM 9,999.99 unusual amount. Expected: ⚠️ AI Isolation Forest flags it.</p>
+              {scenarioRunning === "suspicious" && (
+                <div className="mt-2 text-xs text-[var(--warning)]">Running...</div>
+              )}
+            </button>
+          </div>
+
+          {/* Scenario Result */}
+          {scenarioResult && (
+            <div className={`p-6 border-t border-[var(--border-soft)] ${
+              scenarioResult.status === "success" ? "bg-[var(--success-soft)]" :
+              scenarioResult.status === "blocked" ? "bg-[var(--danger-soft)]" :
+              scenarioResult.status === "flagged" ? "bg-[var(--warning-soft)]" :
+              scenarioResult.status === "error" ? "bg-[var(--danger-soft)]" :
+              "bg-[var(--background)]"
+            }`}>
+              <div className="flex items-start gap-4">
+                <div className="flex-shrink-0">
+                  {scenarioResult.status === "success" && <CheckCircleIcon className="w-10 h-10 text-[var(--success)]" />}
+                  {scenarioResult.status === "blocked" && <ExclamationTriangleIcon className="w-10 h-10 text-[var(--danger)]" />}
+                  {scenarioResult.status === "flagged" && <CpuChipIcon className="w-10 h-10 text-[var(--warning)]" />}
+                  {scenarioResult.status === "error" && <ExclamationTriangleIcon className="w-10 h-10 text-[var(--danger)]" />}
+                  {scenarioResult.status === "running" && (
+                    <div className="w-10 h-10 rounded-full border-4 border-[var(--primary)] border-t-transparent animate-spin" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <h3 className="font-bold text-lg">{scenarioResult.title}</h3>
+                    {scenarioResult.status === "success" && <span className="badge badge-success">Completed</span>}
+                    {scenarioResult.status === "blocked" && <span className="badge badge-danger">Blocked</span>}
+                    {scenarioResult.status === "flagged" && <span className="badge badge-warning">Flagged for Review</span>}
+                    {scenarioResult.status === "error" && <span className="badge badge-danger">Error</span>}
+                    {scenarioResult.status === "running" && <span className="badge badge-primary">Running</span>}
+                  </div>
+                  <p className="text-sm text-[var(--text-main)] mb-3">{scenarioResult.detail}</p>
+
+                  <div className="grid sm:grid-cols-2 gap-3 text-xs">
+                    {scenarioResult.amount !== undefined && (
+                      <div className="flex justify-between p-2 bg-white rounded">
+                        <span className="text-[var(--text-muted)]">Amount</span>
+                        <span className="font-mono font-semibold">RM {scenarioResult.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    )}
+                    {scenarioResult.transactionRef && (
+                      <div className="flex justify-between p-2 bg-white rounded">
+                        <span className="text-[var(--text-muted)]">Reference</span>
+                        <span className="font-mono">{scenarioResult.transactionRef}</span>
+                      </div>
+                    )}
+                    {scenarioResult.anomalyScore !== undefined && (
+                      <div className="flex justify-between p-2 bg-white rounded">
+                        <span className="text-[var(--text-muted)]">AI Anomaly Score</span>
+                        <span className="font-mono font-semibold">{scenarioResult.anomalyScore.toFixed(4)}</span>
+                      </div>
+                    )}
+                    {scenarioResult.hashOriginal && (
+                      <div className="sm:col-span-2 p-2 bg-white rounded space-y-1">
+                        <div className="flex justify-between gap-2">
+                          <span className="text-[var(--text-muted)]">Original SHA-256</span>
+                          <span className="font-mono text-[var(--success)] truncate">{scenarioResult.hashOriginal?.slice(0, 24)}...</span>
+                        </div>
+                        <div className="flex justify-between gap-2">
+                          <span className="text-[var(--text-muted)]">After Tamper</span>
+                          <span className="font-mono text-[var(--danger)] truncate">{scenarioResult.hashTampered}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Walkthrough header */}
+        <div className="text-center mb-6">
+          <h2 className="text-xl font-bold text-[var(--text-main)]">Step-by-Step Walkthrough</h2>
+          <p className="text-sm text-[var(--text-muted)]">Manual flow for technical inspection of each layer</p>
         </div>
 
         {/* Step Indicators */}
@@ -382,17 +652,30 @@ export default function DemoPage() {
                 Verify & Process Payment
               </Button>
               {processRes && (
-                <div className={`p-4 rounded-lg ${processRes.success ? 'bg-[var(--success-soft)] border border-[var(--success)]' : 'bg-[var(--danger-soft)]'}`}>
+                <div className={`p-4 rounded-lg ${processRes.success ? (processRes.tamper_detection?.is_anomaly ? 'bg-[var(--warning-soft)] border border-[var(--warning)]' : 'bg-[var(--success-soft)] border border-[var(--success)]') : 'bg-[var(--danger-soft)]'}`}>
                   {processRes.success ? (
                     <div className="space-y-2">
-                      <div className="font-semibold text-[var(--success)] flex items-center gap-2">
-                        <CheckCircleIcon className="w-5 h-5" />
-                        Payment Successful!
-                      </div>
-                      <div className="text-sm">
+                      {processRes.tamper_detection?.is_anomaly ? (
+                        <div className="font-semibold text-[var(--warning)] flex items-center gap-2">
+                          <CpuChipIcon className="w-5 h-5" />
+                          Payment Flagged by AI — Admin review required
+                        </div>
+                      ) : (
+                        <div className="font-semibold text-[var(--success)] flex items-center gap-2">
+                          <CheckCircleIcon className="w-5 h-5" />
+                          Payment Successful!
+                        </div>
+                      )}
+                      <div className="text-sm space-y-1">
                         <div>Transaction: {processRes.transaction_ref}</div>
                         <div>Amount: RM {processRes.amount}</div>
-                        <div>Completed: {processRes.completed_at}</div>
+                        {processRes.completed_at && <div>Completed: {processRes.completed_at}</div>}
+                        {processRes.tamper_detection && (
+                          <div className="pt-2 mt-2 border-t border-[var(--border-soft)] font-mono text-xs">
+                            <div>AI anomaly score: {processRes.tamper_detection.anomaly_score?.toFixed(4)}</div>
+                            <div>Anomaly: {processRes.tamper_detection.is_anomaly ? "YES" : "no"}</div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ) : (
