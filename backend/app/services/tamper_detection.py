@@ -107,27 +107,29 @@ class TamperDetectionService:
 
         # Anomalous transactions (10%)
         n_anomaly = n_samples - n_normal
+        third = n_anomaly // 3
+        half = n_anomaly // 2
         anomaly_data = {
-            'amount': np.random.choice([
-                np.random.lognormal(7, 0.5, n_anomaly // 3),  # Unusually high amounts
-                np.random.uniform(0.01, 1, n_anomaly // 3),  # Unusually low amounts
-                np.random.lognormal(4, 1, n_anomaly - 2 * (n_anomaly // 3))  # Normal amounts but other anomalies
-            ]).flatten()[:n_anomaly],
-            'hour_of_day': np.random.choice([
-                np.random.uniform(0, 5, n_anomaly // 2),  # Late night transactions
-                np.random.normal(14, 4, n_anomaly - n_anomaly // 2) % 24
-            ]).flatten()[:n_anomaly],
+            'amount': np.concatenate([
+                np.random.lognormal(7, 0.5, third),  # Unusually high amounts
+                np.random.uniform(0.01, 1, third),  # Unusually low amounts
+                np.random.lognormal(4, 1, n_anomaly - 2 * third)  # Normal amounts, other anomalies
+            ])[:n_anomaly],
+            'hour_of_day': np.concatenate([
+                np.random.uniform(0, 5, half),  # Late night transactions
+                np.random.normal(14, 4, n_anomaly - half) % 24
+            ])[:n_anomaly],
             'day_of_week': np.random.randint(0, 7, n_anomaly),
-            'transaction_frequency': np.random.choice([
-                np.random.poisson(15, n_anomaly // 2),  # High frequency
-                np.zeros(n_anomaly - n_anomaly // 2)  # Or very low
-            ]).flatten()[:n_anomaly],
+            'transaction_frequency': np.concatenate([
+                np.random.poisson(15, half).astype(float),  # High frequency
+                np.zeros(n_anomaly - half)  # Or very low
+            ])[:n_anomaly],
             'amount_deviation': np.random.normal(0, 1.5, n_anomaly),  # Higher deviation
-            'time_since_last_transaction': np.random.choice([
-                np.random.exponential(0.1, n_anomaly // 2),  # Very quick succession
-                np.random.exponential(48, n_anomaly - n_anomaly // 2)  # Or very long gaps
-            ]).flatten()[:n_anomaly],
-            'qr_scan_attempts': np.random.choice([1, 3, 5, 10], n_anomaly)  # Multiple scan attempts
+            'time_since_last_transaction': np.concatenate([
+                np.random.exponential(0.1, half),  # Very quick succession
+                np.random.exponential(48, n_anomaly - half)  # Or very long gaps
+            ])[:n_anomaly],
+            'qr_scan_attempts': np.random.choice(np.array([1, 3, 5, 10]), n_anomaly)
         }
 
         # Combine data
