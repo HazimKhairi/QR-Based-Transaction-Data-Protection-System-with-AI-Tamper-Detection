@@ -39,7 +39,7 @@ export default function HomePage() {
 
       {/* Hero Section */}
       <section className="relative overflow-hidden">
-        <div className="absolute inset-0 gradient-primary opacity-5" />
+        <div className="absolute inset-0 gradient-primary opacity-5 pointer-events-none" />
         <div className="max-w-7xl mx-auto px-6 py-24">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className="space-y-8">
@@ -88,8 +88,8 @@ export default function HomePage() {
 
             {/* Hero Visual */}
             <div className="relative">
-              <div className="absolute -top-10 -right-10 w-72 h-72 bg-[var(--primary)] rounded-full opacity-10 blur-3xl" />
-              <div className="absolute -bottom-10 -left-10 w-72 h-72 bg-[var(--success)] rounded-full opacity-10 blur-3xl" />
+              <div className="absolute -top-10 -right-10 w-72 h-72 bg-[var(--primary)] rounded-full opacity-10 blur-3xl pointer-events-none" />
+              <div className="absolute -bottom-10 -left-10 w-72 h-72 bg-[var(--success)] rounded-full opacity-10 blur-3xl pointer-events-none" />
 
               <div className="relative bg-white rounded-3xl p-8 shadow-2xl border border-[var(--border-soft)]">
                 <div className="text-center mb-6">
