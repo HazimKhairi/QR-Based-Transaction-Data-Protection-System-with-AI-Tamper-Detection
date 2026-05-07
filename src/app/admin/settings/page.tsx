@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import QRCode from "qrcode";
 import Header from "@/app/components/ui/Header";
 import { CardWithHeader } from "@/app/components/ui/Card";
 import Button from "@/app/components/ui/Button";
@@ -11,6 +12,8 @@ import {
     ShieldCheckIcon,
     GlobeAltIcon,
     XMarkIcon,
+    DevicePhoneMobileIcon,
+    ClipboardDocumentIcon,
 } from "@heroicons/react/24/outline";
 
 type ProfileResponse = {
@@ -54,6 +57,17 @@ export default function SettingsPage() {
     const [profileLoading, setProfileLoading] = useState(true);
     const [profileSaving, setProfileSaving] = useState(false);
     const [profileMessage, setProfileMessage] = useState<string | null>(null);
+
+    // 2FA modal state
+    const [show2faModal, setShow2faModal] = useState(false);
+    const [twoFaMode, setTwoFaMode] = useState<"setup" | "disable">("setup");
+    const [twoFaStep, setTwoFaStep] = useState<"loading" | "scan" | "verify" | "success">("loading");
+    const [twoFaSecret, setTwoFaSecret] = useState<string>("");
+    const [twoFaQrUrl, setTwoFaQrUrl] = useState<string>("");
+    const [twoFaOtp, setTwoFaOtp] = useState<string>("");
+    const [twoFaError, setTwoFaError] = useState<string | null>(null);
+    const [twoFaLoading, setTwoFaLoading] = useState(false);
+    const [twoFaSecretCopied, setTwoFaSecretCopied] = useState(false);
 
     useEffect(() => {
         (async () => {
@@ -105,6 +119,104 @@ export default function SettingsPage() {
             setPasswordError(err.message || "Failed to change password");
         } finally {
             setPasswordLoading(false);
+        }
+    };
+
+    const reset2faModal = () => {
+        setShow2faModal(false);
+        setTwoFaSecret("");
+        setTwoFaQrUrl("");
+        setTwoFaOtp("");
+        setTwoFaError(null);
+        setTwoFaLoading(false);
+        setTwoFaSecretCopied(false);
+    };
+
+    const handleConfigure2fa = async () => {
+        setTwoFaError(null);
+        setTwoFaOtp("");
+        setTwoFaSecretCopied(false);
+
+        if (profileForm.is2faEnabled) {
+            // Disable flow — just open modal asking for current OTP
+            setTwoFaMode("disable");
+            setTwoFaStep("verify");
+            setShow2faModal(true);
+            return;
+        }
+
+        // Setup flow — call backend, render QR
+        setTwoFaMode("setup");
+        setTwoFaStep("loading");
+        setShow2faModal(true);
+        try {
+            const res = await apiFetch<{
+                success: boolean;
+                secret: string;
+                provisioning_uri: string;
+            }>("/api/auth/2fa/setup", { method: "POST" });
+
+            setTwoFaSecret(res.secret);
+            const qrUrl = await QRCode.toDataURL(res.provisioning_uri, { width: 220, margin: 2 });
+            setTwoFaQrUrl(qrUrl);
+            setTwoFaStep("scan");
+        } catch (err: any) {
+            setTwoFaError(err.message || "Failed to start 2FA setup");
+            setTwoFaStep("scan");
+        }
+    };
+
+    const handleVerify2fa = async () => {
+        if (twoFaOtp.length !== 6) {
+            setTwoFaError("Please enter the 6-digit code from your authenticator app");
+            return;
+        }
+        setTwoFaError(null);
+        setTwoFaLoading(true);
+        try {
+            await apiFetch("/api/auth/2fa/verify", {
+                method: "POST",
+                body: { otp_code: twoFaOtp },
+            });
+            setProfileForm((prev) => ({ ...prev, is2faEnabled: true }));
+            setTwoFaStep("success");
+            setTimeout(() => reset2faModal(), 2500);
+        } catch (err: any) {
+            setTwoFaError(err.message || "Invalid OTP code");
+        } finally {
+            setTwoFaLoading(false);
+        }
+    };
+
+    const handleDisable2fa = async () => {
+        if (twoFaOtp.length !== 6) {
+            setTwoFaError("Please enter the 6-digit code from your authenticator app");
+            return;
+        }
+        setTwoFaError(null);
+        setTwoFaLoading(true);
+        try {
+            await apiFetch("/api/auth/2fa/disable", {
+                method: "POST",
+                body: { otp_code: twoFaOtp },
+            });
+            setProfileForm((prev) => ({ ...prev, is2faEnabled: false }));
+            setTwoFaStep("success");
+            setTimeout(() => reset2faModal(), 2000);
+        } catch (err: any) {
+            setTwoFaError(err.message || "Invalid OTP code");
+        } finally {
+            setTwoFaLoading(false);
+        }
+    };
+
+    const copySecret = async () => {
+        try {
+            await navigator.clipboard.writeText(twoFaSecret);
+            setTwoFaSecretCopied(true);
+            setTimeout(() => setTwoFaSecretCopied(false), 2000);
+        } catch {
+            setTwoFaError("Could not copy to clipboard");
         }
     };
 
@@ -228,11 +340,18 @@ export default function SettingsPage() {
                                         <div>
                                             <div className="font-medium">Two-Factor Authentication</div>
                                             <div className={`text-sm ${profileForm.is2faEnabled ? "text-[var(--success)]" : "text-[var(--text-muted)]"}`}>
-                                                {profileForm.is2faEnabled ? "Enabled" : "Disabled"}
+                                                {profileForm.is2faEnabled ? "Enabled — TOTP via authenticator app" : "Disabled — add an extra layer of security"}
                                             </div>
                                         </div>
                                     </div>
-                                    <Button variant="secondary" size="sm">Configure</Button>
+                                    <Button
+                                        variant={profileForm.is2faEnabled ? "danger" : "primary"}
+                                        size="sm"
+                                        onClick={handleConfigure2fa}
+                                        disabled={profileLoading}
+                                    >
+                                        {profileForm.is2faEnabled ? "Disable 2FA" : "Enable 2FA"}
+                                    </Button>
                                 </div>
 
                                 <div className="flex items-center justify-between p-4 rounded-lg bg-[var(--background)]">
@@ -383,6 +502,151 @@ export default function SettingsPage() {
                                         Change Password
                                     </Button>
                                 </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* 2FA Setup / Disable Modal */}
+            {show2faModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto">
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-semibold flex items-center gap-2">
+                                <ShieldCheckIcon className="w-5 h-5 text-[var(--primary)]" />
+                                {twoFaMode === "setup" ? "Enable Two-Factor Authentication" : "Disable Two-Factor Authentication"}
+                            </h3>
+                            <button onClick={reset2faModal} className="p-1 hover:bg-gray-100 rounded">
+                                <XMarkIcon className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {twoFaStep === "loading" && (
+                            <div className="py-12 text-center text-sm text-[var(--text-muted)]">
+                                Generating secret and QR code...
+                            </div>
+                        )}
+
+                        {twoFaMode === "setup" && twoFaStep === "scan" && (
+                            <div className="space-y-4">
+                                <div className="text-sm text-[var(--text-muted)]">
+                                    <div className="flex items-center gap-2 mb-2 text-[var(--text)] font-medium">
+                                        <DevicePhoneMobileIcon className="w-4 h-4" />
+                                        Step 1: Scan with authenticator app
+                                    </div>
+                                    Use Google Authenticator, Microsoft Authenticator, Authy, or 1Password to scan this QR code.
+                                </div>
+
+                                {twoFaQrUrl && (
+                                    <div className="flex justify-center p-4 bg-white border border-gray-200 rounded-lg">
+                                        <img src={twoFaQrUrl} alt="2FA QR Code" width={220} height={220} />
+                                    </div>
+                                )}
+
+                                <div>
+                                    <label className="label text-xs">Or enter this secret manually:</label>
+                                    <div className="flex items-center gap-2 mt-1 p-2 bg-[var(--background)] rounded-lg">
+                                        <code className="flex-1 text-xs font-mono break-all">{twoFaSecret}</code>
+                                        <button
+                                            type="button"
+                                            onClick={copySecret}
+                                            className="p-1.5 hover:bg-gray-200 rounded text-[var(--text-muted)]"
+                                            title="Copy secret"
+                                        >
+                                            <ClipboardDocumentIcon className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                    {twoFaSecretCopied && (
+                                        <div className="text-xs text-[var(--success)] mt-1">Copied!</div>
+                                    )}
+                                </div>
+
+                                <div className="border-t pt-4">
+                                    <div className="text-[var(--text)] font-medium text-sm mb-2">
+                                        Step 2: Enter the 6-digit code from your app
+                                    </div>
+                                    <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        maxLength={6}
+                                        className="input text-center tracking-[0.5em] text-lg font-mono"
+                                        placeholder="000000"
+                                        value={twoFaOtp}
+                                        onChange={(e) => setTwoFaOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                                        autoFocus
+                                    />
+                                </div>
+
+                                {twoFaError && (
+                                    <div className="text-sm text-[var(--danger)]">{twoFaError}</div>
+                                )}
+
+                                <div className="flex gap-3 pt-2">
+                                    <Button variant="secondary" fullWidth onClick={reset2faModal}>
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        variant="primary"
+                                        fullWidth
+                                        onClick={handleVerify2fa}
+                                        loading={twoFaLoading}
+                                        disabled={twoFaOtp.length !== 6}
+                                    >
+                                        Verify & Enable
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+
+                        {twoFaMode === "disable" && twoFaStep === "verify" && (
+                            <div className="space-y-4">
+                                <div className="text-sm text-[var(--text-muted)]">
+                                    Enter the current 6-digit code from your authenticator app to disable 2FA.
+                                </div>
+                                <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    maxLength={6}
+                                    className="input text-center tracking-[0.5em] text-lg font-mono"
+                                    placeholder="000000"
+                                    value={twoFaOtp}
+                                    onChange={(e) => setTwoFaOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                                    autoFocus
+                                />
+                                {twoFaError && (
+                                    <div className="text-sm text-[var(--danger)]">{twoFaError}</div>
+                                )}
+                                <div className="flex gap-3 pt-2">
+                                    <Button variant="secondary" fullWidth onClick={reset2faModal}>
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        variant="danger"
+                                        fullWidth
+                                        onClick={handleDisable2fa}
+                                        loading={twoFaLoading}
+                                        disabled={twoFaOtp.length !== 6}
+                                    >
+                                        Disable 2FA
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+
+                        {twoFaStep === "success" && (
+                            <div className="text-center py-8">
+                                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[var(--success-soft)] flex items-center justify-center">
+                                    <ShieldCheckIcon className="w-8 h-8 text-[var(--success)]" />
+                                </div>
+                                <p className="text-[var(--success)] font-medium">
+                                    {twoFaMode === "setup" ? "2FA enabled successfully!" : "2FA disabled."}
+                                </p>
+                                <p className="text-sm text-[var(--text-muted)] mt-2">
+                                    {twoFaMode === "setup"
+                                        ? "You will need to enter a code from your authenticator app on next login."
+                                        : "Your account is now protected by password only."}
+                                </p>
                             </div>
                         )}
                     </div>
