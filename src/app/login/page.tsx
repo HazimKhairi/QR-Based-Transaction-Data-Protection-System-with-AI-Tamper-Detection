@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, defaultLandingFor } from "@/lib/api";
 import Link from "next/link";
 import {
   ShieldCheckIcon,
@@ -46,7 +46,10 @@ export default function LoginPage() {
         if (data.refresh_token) {
           localStorage.setItem("refresh_token", data.refresh_token);
         }
-        router.push("/admin/dashboard");
+        if (data.user) {
+          localStorage.setItem("user", JSON.stringify(data.user));
+        }
+        router.push(defaultLandingFor(data.user?.role));
       } else {
         setError("Login failed. Please try again.");
       }

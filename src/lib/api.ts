@@ -38,9 +38,44 @@ export function isAuthenticated(): boolean {
   return !!localStorage.getItem("access_token");
 }
 
+export type AuthUser = {
+  id?: number;
+  email?: string;
+  full_name?: string;
+  role?: "resident" | "admin" | "super_admin";
+};
+
+export function getCurrentUser(): AuthUser | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem("user");
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as AuthUser;
+  } catch {
+    return null;
+  }
+}
+
+export function getUserRole(): AuthUser["role"] | null {
+  return getCurrentUser()?.role ?? null;
+}
+
+export function isAdmin(): boolean {
+  const role = getUserRole();
+  return role === "admin" || role === "super_admin";
+}
+
+export function defaultLandingFor(role: AuthUser["role"] | null | undefined): string {
+  if (role === "admin" || role === "super_admin") return "/admin/dashboard";
+  if (role === "resident") return "/resident/payment";
+  return "/login";
+}
+
 export function logout() {
   if (typeof window !== "undefined") {
     localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    localStorage.removeItem("user");
     window.location.href = "/login";
   }
 }
