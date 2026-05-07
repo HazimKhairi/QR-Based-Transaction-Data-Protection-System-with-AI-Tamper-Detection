@@ -17,6 +17,10 @@ from app.schemas import (
     PasswordResetRequestSchema, PasswordResetSchema, ChangePasswordSchema
 )
 from app.services.auth_service import get_auth_service
+from app.services.email_service import (
+    send_password_reset_email,
+    send_welcome_email,
+)
 
 auth_bp = Blueprint('auth', __name__)
 auth_service = get_auth_service()
@@ -91,6 +95,9 @@ def register():
 
         db.session.add(user)
         db.session.commit()
+
+        # Welcome email (non-blocking; errors logged not raised)
+        send_welcome_email(user.email, user.full_name, user.role.value)
 
         # Create audit log
         auth_service.create_audit_log(
@@ -709,17 +716,10 @@ def request_password_reset():
 
         user = User.query.filter_by(email=data['email'].lower()).first()
 
-        # Always return success to prevent email enumeration
+        # Always return the same response to prevent email enumeration
         if user:
             token = auth_service.generate_password_reset_token(user)
-
-            # In production, send email with token
-            # For prototype, return token in response
-            return jsonify({
-                'success': True,
-                'message': 'Password reset instructions sent',
-                'token': token  # Remove in production - send via email instead
-            }), 200
+            send_password_reset_email(user.email, user.full_name, token)
 
         return jsonify({
             'success': True,

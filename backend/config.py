@@ -4,6 +4,21 @@ Configuration settings for QR-Based Transaction Data Protection System
 import os
 from datetime import timedelta
 
+# Load .env before any os.environ.get() calls below
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+except ImportError:
+    pass
+
+
+def _env_bool(name, default=False):
+    val = os.environ.get(name)
+    if val is None:
+        return default
+    return val.strip().lower() in ('1', 'true', 'yes', 'on')
+
+
 class Config:
     """Base configuration class"""
 
@@ -48,6 +63,21 @@ class Config:
 
     # CORS settings
     CORS_ORIGINS = ['*']  # In production, specify exact origins
+
+    # Email (SMTP) settings — used by app.services.email_service
+    MAIL_ENABLED = _env_bool('MAIL_ENABLED', False)
+    MAIL_SERVER = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
+    MAIL_PORT = int(os.environ.get('MAIL_PORT', '587'))
+    MAIL_USE_TLS = _env_bool('MAIL_USE_TLS', True)
+    MAIL_USE_SSL = _env_bool('MAIL_USE_SSL', False)
+    MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
+    MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
+    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_DEFAULT_SENDER') or os.environ.get('MAIL_USERNAME')
+    MAIL_DEFAULT_SENDER_NAME = os.environ.get('MAIL_DEFAULT_SENDER_NAME', 'QR Transaction Protection')
+    MAIL_TIMEOUT = int(os.environ.get('MAIL_TIMEOUT', '15'))
+
+    # Frontend base URL for links inside emails (password reset, etc.)
+    APP_FRONTEND_URL = os.environ.get('APP_FRONTEND_URL', 'http://localhost:3000')
 
 
 class DevelopmentConfig(Config):

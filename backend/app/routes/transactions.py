@@ -7,7 +7,7 @@ from marshmallow import ValidationError
 from flasgger import swag_from
 
 from app import db, limiter
-from app.models import Transaction, TransactionStatus, User
+from app.models import Transaction, TransactionStatus, User, UserRole
 from app.schemas import (
     TransactionCreateSchema, TransactionProcessSchema,
     TransactionVerifySchema, PaginationSchema
@@ -15,6 +15,10 @@ from app.schemas import (
 from app.services.qr_service import get_qr_service
 from app.services.auth_service import get_auth_service
 from app.services.tamper_detection import get_tamper_detection_service
+from app.services.email_service import (
+    send_tamper_alert_email,
+    send_transaction_receipt,
+)
 
 transactions_bp = Blueprint('transactions', __name__)
 qr_service = get_qr_service()
@@ -338,6 +342,22 @@ def process_transaction():
                     severity='warning'
                 )
 
+                # Email all admins about the flagged transaction
+                admin_emails = [
+                    a.email for a in User.query.filter(
+                        User.role.in_([UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+                        User.is_active.is_(True),
+                    ).all()
+                ]
+                send_tamper_alert_email(
+                    admin_emails=admin_emails,
+                    transaction_ref=transaction.transaction_ref,
+                    user_email=user.email,
+                    amount=transaction.amount,
+                    anomaly_score=detection_result['anomaly_score'],
+                    details=detection_result.get('details', 'AI detected anomaly'),
+                )
+
                 # Store detection result
                 from app.models import TamperDetectionResult
                 import json
@@ -371,6 +391,18 @@ def process_transaction():
                 description=f"Transaction completed: {result['transaction_ref']}",
                 ip_address=request.remote_addr
             )
+
+            # Email receipt to the resident
+            if transaction:
+                send_transaction_receipt(
+                    to_email=user.email,
+                    full_name=user.full_name,
+                    transaction_ref=transaction.transaction_ref,
+                    amount=float(transaction.amount or 0),
+                    currency=getattr(transaction, 'currency', None) or 'MYR',
+                    status='completed',
+                    flagged=bool(transaction.is_flagged),
+                )
 
             # Add tamper detection info to response
             result['tamper_detection'] = {

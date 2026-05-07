@@ -21,6 +21,7 @@ from app.schemas import (
 )
 from app.services.auth_service import get_auth_service
 from app.services.qr_service import get_qr_service
+from app.services.email_service import send_email
 
 admin_bp = Blueprint('admin', __name__)
 auth_service = get_auth_service()
@@ -1021,3 +1022,42 @@ def get_tamper_detections():
             'success': False,
             'error': str(e)
         }), 500
+
+
+# ============== Email smoke test ==============
+
+@admin_bp.route('/email/test', methods=['POST'])
+@jwt_required()
+@admin_required
+@limiter.limit("5 per minute")
+@swag_from({
+    'tags': ['Admin'],
+    'summary': 'Send a test email',
+    'description': 'Sends a test email synchronously to verify SMTP config. Body: {"to": "addr@example.com"} (optional, defaults to current admin).',
+    'security': [{'Bearer': []}],
+    'responses': {
+        '200': {'description': 'Test email dispatched'},
+        '400': {'description': 'Mail not configured or send failed'}
+    }
+})
+def email_test():
+    """Send a test email to verify SMTP credentials."""
+    try:
+        body = request.get_json(silent=True) or {}
+        target = body.get('to')
+        if not target:
+            user = User.query.get(get_jwt_identity())
+            target = user.email if user else None
+        if not target:
+            return jsonify({'success': False, 'error': 'No recipient'}), 400
+
+        send_email(
+            to=target,
+            subject='[Test] QR Transaction email is working',
+            text_body='This is a test email from QR Transaction Protection. SMTP is configured correctly.',
+            html_body='<p>This is a test email from <strong>QR Transaction Protection</strong>. SMTP is configured correctly.</p>',
+            sync=True,
+        )
+        return jsonify({'success': True, 'message': f'Test email sent to {target}'}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
