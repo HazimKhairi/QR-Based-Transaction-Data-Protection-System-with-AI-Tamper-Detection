@@ -64,6 +64,14 @@ type ScenarioResult = {
   hashTampered?: string;
 };
 
+type Demo2FAInfo = {
+  success: boolean;
+  secret: string;
+  otpauth_uri: string;
+  account: string;
+  issuer: string;
+};
+
 export default function DemoPage() {
   const [step, setStep] = useState<number>(1);
   const [amount, setAmount] = useState<number>(25.50);
@@ -71,13 +79,47 @@ export default function DemoPage() {
   const [qr, setQr] = useState<GenerateQRResponse | null>(null);
   const [verification, setVerification] = useState<VerifyQRResponse | null>(null);
   const [tamperedVerification, setTamperedVerification] = useState<VerifyQRResponse | null>(null);
-  const [otp, setOtp] = useState<string>("123456");
+  const [otp, setOtp] = useState<string>("");
   const [processRes, setProcessRes] = useState<ProcessResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [qrImageUrl, setQrImageUrl] = useState<string | null>(null);
   const [tamperedString, setTamperedString] = useState<string | null>(null);
   const [tamperedQrImageUrl, setTamperedQrImageUrl] = useState<string | null>(null);
+
+  // Real-TOTP demo 2FA state
+  const [twoFAInfo, setTwoFAInfo] = useState<Demo2FAInfo | null>(null);
+  const [twoFAQrUrl, setTwoFAQrUrl] = useState<string | null>(null);
+  const [twoFALoading, setTwoFALoading] = useState<boolean>(false);
+  const [twoFAError, setTwoFAError] = useState<string | null>(null);
+  const [secretCopied, setSecretCopied] = useState<boolean>(false);
+
+  const handleLoad2FAInfo = async () => {
+    if (twoFAInfo) return;
+    setTwoFALoading(true);
+    setTwoFAError(null);
+    try {
+      const info = await apiFetch<Demo2FAInfo>("/api/transactions/demo/2fa-info");
+      setTwoFAInfo(info);
+      try {
+        const url = await QRCode.toDataURL(info.otpauth_uri, { width: 200, margin: 2 });
+        setTwoFAQrUrl(url);
+      } catch (_e) {}
+    } catch (err: any) {
+      setTwoFAError(err.message || "Failed to load 2FA setup");
+    } finally {
+      setTwoFALoading(false);
+    }
+  };
+
+  const handleCopySecret = async () => {
+    if (!twoFAInfo?.secret) return;
+    try {
+      await navigator.clipboard.writeText(twoFAInfo.secret);
+      setSecretCopied(true);
+      setTimeout(() => setSecretCopied(false), 1500);
+    } catch (_e) {}
+  };
 
   // Scenario quick-test state
   const [scenarioResult, setScenarioResult] = useState<ScenarioResult | null>(null);
@@ -146,10 +188,13 @@ export default function DemoPage() {
         return;
       }
 
-      // Normal + suspicious: process the QR end-to-end
+      // Normal + suspicious: fetch a live TOTP from the demo secret, then process the QR end-to-end
+      const otpRes = await apiFetch<{ success: boolean; otp_code: string }>(
+        "/api/transactions/demo/current-otp"
+      );
       const proc = await apiFetch<ProcessResponse>("/api/transactions/demo/process", {
         method: "POST",
-        body: { qr_code_data: gen.qr_code_data, otp_code: "123456" },
+        body: { qr_code_data: gen.qr_code_data, otp_code: otpRes.otp_code },
       });
 
       if (!proc.success) {
@@ -284,7 +329,9 @@ export default function DemoPage() {
       setProcessRes(res);
       setStep(5);
     } catch (err: any) {
-      setError(err.message);
+      // Backend returned 4xx (e.g. OTP verification failed) — show it inside step 5.
+      setProcessRes({ success: false, error: err.message });
+      setStep(5);
     } finally {
       setLoading(false);
     }
@@ -635,25 +682,89 @@ export default function DemoPage() {
 
           {/* Step 4: 2FA Verification */}
           <CardWithHeader
-            title="Step 4: 2FA Verification"
+            title="Step 4: 2FA Verification (Real TOTP)"
             action={step >= 5 && <StatusBadge status={processRes?.success ? "Completed" : "Active"} />}
           >
             <div className="space-y-4">
               <p className="text-sm text-[var(--text-muted)]">
-                Enter 2FA PIN to authorize the transaction.
+                Authorize the transaction with a live one-time code from an authenticator app
+                (Google Authenticator, Authy, 1Password, etc.). The backend validates against a
+                real TOTP secret — wrong codes are rejected.
               </p>
+
+              {/* Authenticator setup */}
+              {!twoFAInfo ? (
+                <div className="p-3 rounded-lg border border-dashed border-[var(--border-soft)] bg-[var(--background)]">
+                  <p className="text-xs text-[var(--text-muted)] mb-2">
+                    First time? Pair your authenticator app with the demo secret.
+                  </p>
+                  <Button variant="secondary" size="sm" onClick={handleLoad2FAInfo} loading={twoFALoading} disabled={twoFALoading}>
+                    <ShieldCheckIcon className="w-4 h-4" />
+                    Show Authenticator Setup
+                  </Button>
+                  {twoFAError && (
+                    <p className="text-xs text-[var(--danger)] mt-2">{twoFAError}</p>
+                  )}
+                </div>
+              ) : (
+                <div className="p-3 rounded-lg border border-[var(--primary-soft)] bg-[var(--primary-soft)]/30 space-y-3">
+                  <div className="flex items-start gap-3 flex-wrap">
+                    {twoFAQrUrl && (
+                      <img
+                        src={twoFAQrUrl}
+                        alt="Authenticator QR"
+                        className="border border-white rounded-lg bg-white p-1"
+                        width={140}
+                        height={140}
+                      />
+                    )}
+                    <div className="flex-1 min-w-[180px] space-y-2 text-xs">
+                      <div>
+                        <div className="text-[var(--text-muted)] mb-1">Account</div>
+                        <div className="font-mono">{twoFAInfo.account}</div>
+                      </div>
+                      <div>
+                        <div className="text-[var(--text-muted)] mb-1">Issuer</div>
+                        <div className="font-mono">{twoFAInfo.issuer}</div>
+                      </div>
+                      <div>
+                        <div className="text-[var(--text-muted)] mb-1">Manual secret (Base32)</div>
+                        <div className="flex items-center gap-2">
+                          <code className="font-mono text-[11px] bg-white px-2 py-1 rounded break-all">
+                            {twoFAInfo.secret}
+                          </code>
+                          <Button variant="ghost" size="sm" onClick={handleCopySecret}>
+                            {secretCopied ? "Copied" : "Copy"}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-[var(--text-muted)]">
+                    Scan the QR or enter the secret manually. Codes refresh every 30 seconds.
+                  </p>
+                </div>
+              )}
+
               <div>
-                <label className="label">PIN / OTP Code</label>
+                <label className="label">Authenticator Code</label>
                 <input
                   type="text"
+                  inputMode="numeric"
+                  pattern="\d{6}"
                   value={otp}
                   maxLength={6}
-                  onChange={(e) => setOtp(e.target.value)}
-                  className="input w-48"
-                  placeholder="Enter 6-digit code"
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                  className="input w-48 font-mono tracking-widest"
+                  placeholder="6-digit code"
                 />
               </div>
-              <Button variant="success" onClick={handleProcess} loading={loading && step >= 4} disabled={!qr?.qr_code_data || loading}>
+              <Button
+                variant="success"
+                onClick={handleProcess}
+                loading={loading && step >= 4}
+                disabled={!qr?.qr_code_data || loading || otp.length !== 6}
+              >
                 <CheckCircleIcon className="w-5 h-5" />
                 Verify & Process Payment
               </Button>

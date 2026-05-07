@@ -53,6 +53,12 @@ class Config:
     OTP_ISSUER_NAME = "QR Transaction Protection"
     OTP_VALID_WINDOW = 1  # Allow 1 step tolerance for time sync issues
 
+    # Demo 2FA — fixed TOTP secret used by /api/transactions/demo/* endpoints.
+    # Set via env in production-like demos so it survives restarts; if unset,
+    # a random secret is generated on first call and cached on the app.
+    DEMO_TOTP_SECRET = os.environ.get('DEMO_TOTP_SECRET')
+    DEMO_TOTP_ACCOUNT = os.environ.get('DEMO_TOTP_ACCOUNT', 'demo@qrtransaction.my')
+
     # AI Model settings
     AI_MODEL_PATH = os.path.join(os.path.dirname(__file__), 'models', 'tamper_detection_model.joblib')
     ANOMALY_THRESHOLD = -0.5  # Isolation Forest anomaly threshold

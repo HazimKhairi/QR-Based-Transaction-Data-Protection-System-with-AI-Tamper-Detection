@@ -1,7 +1,8 @@
 """
 Transaction routes for QR-Based Transaction Data Protection System
 """
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, current_app, request, jsonify
+import pyotp
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from marshmallow import ValidationError
 from flasgger import swag_from
@@ -672,6 +673,51 @@ def get_statistics():
 # These endpoints are for demonstration purposes only
 # =============================================================================
 
+
+def _get_demo_totp_secret():
+    """Return the fixed demo TOTP secret, generating one on first use if needed."""
+    secret = current_app.config.get('DEMO_TOTP_SECRET')
+    if not secret:
+        secret = pyotp.random_base32()
+        current_app.config['DEMO_TOTP_SECRET'] = secret
+    return secret
+
+
+@transactions_bp.route('/demo/current-otp', methods=['GET'])
+@limiter.limit("60 per minute")
+def demo_current_otp():
+    """Return the current TOTP value for the demo secret. Used by the
+    scripted quick-scenario flow so it can complete /demo/process without
+    requiring an authenticator app on screen."""
+    try:
+        secret = _get_demo_totp_secret()
+        code = pyotp.TOTP(secret).now()
+        return jsonify({'success': True, 'otp_code': code}), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@transactions_bp.route('/demo/2fa-info', methods=['GET'])
+@limiter.limit("30 per minute")
+def demo_2fa_info():
+    """Return demo 2FA provisioning details so the audience can scan with an
+    authenticator app (Google Authenticator, Authy, 1Password, etc.)."""
+    try:
+        secret = _get_demo_totp_secret()
+        account = current_app.config.get('DEMO_TOTP_ACCOUNT', 'demo@qrtransaction.my')
+        otpauth_uri = auth_service.get_totp_uri(account, secret)
+        return jsonify({
+            'success': True,
+            'secret': secret,
+            'otpauth_uri': otpauth_uri,
+            'account': account,
+            'issuer': auth_service._get_otp_issuer(),
+            'digits': 6,
+            'period': 30,
+        }), 200
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @transactions_bp.route('/demo/generate-qr', methods=['POST'])
 @limiter.limit("30 per minute")
 def demo_generate_qr():
@@ -749,7 +795,7 @@ def demo_process_transaction():
     try:
         data = request.json or {}
         qr_code_data = data.get('qr_code_data')
-        otp_code = data.get('otp_code', '123456')
+        otp_code = (data.get('otp_code') or '').strip()
 
         if not qr_code_data:
             return jsonify({
@@ -767,12 +813,19 @@ def demo_process_transaction():
                 'verification': verification
             }), 400
 
-        # For demo, accept any 6-digit OTP
-        if len(otp_code) != 6:
+        # Real TOTP verification against the demo authenticator secret.
+        if not (otp_code.isdigit() and len(otp_code) == 6):
             return jsonify({
                 'success': False,
-                'error': 'Invalid OTP code. Please enter a 6-digit code.'
+                'error': 'Invalid OTP format. Enter the 6-digit code from your authenticator app.'
             }), 400
+
+        demo_secret = _get_demo_totp_secret()
+        if not auth_service.verify_totp(demo_secret, otp_code):
+            return jsonify({
+                'success': False,
+                'error': 'OTP verification failed. Make sure your device clock is synced and the code is current.'
+            }), 401
 
         # Use demo user to process
         demo_user = User.query.filter_by(email='admin@qrtransaction.my').first()

@@ -12,7 +12,6 @@ import {
     CheckCircleIcon,
     ArrowLeftIcon,
     LockClosedIcon,
-    ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 
 type PaymentState = "loading" | "idle" | "processing" | "success" | "flagged" | "error";
@@ -137,20 +136,6 @@ export default function ResidentPaymentPage() {
     const handleReset = () => {
         generateQr();
     };
-
-    if (paymentState === "loading") {
-        return (
-            <div className="card rounded-[28px] overflow-hidden animate-fadeIn">
-                <div className="gradient-header text-white p-6 text-center">
-                    <h1 className="text-xl font-bold">Generating Secure QR</h1>
-                    <p className="text-white/80 text-sm mt-2">Encrypting payload with AES-256...</p>
-                </div>
-                <div className="p-12 flex items-center justify-center">
-                    <ArrowPathIcon className="w-12 h-12 text-[var(--primary)] animate-spin" />
-                </div>
-            </div>
-        );
-    }
 
     if (paymentState === "success" || paymentState === "flagged") {
         const flagged = paymentState === "flagged";
@@ -294,7 +279,7 @@ export default function ResidentPaymentPage() {
                         length={6}
                         onComplete={setOtp}
                         onChange={setOtp}
-                        disabled={paymentState === "processing"}
+                        disabled={paymentState === "processing" || paymentState === "loading"}
                         error={paymentState === "error"}
                     />
                     {errorMessage && (
@@ -306,12 +291,16 @@ export default function ResidentPaymentPage() {
                     variant="success"
                     fullWidth
                     size="lg"
-                    disabled={otp.length !== 6 || paymentState === "processing"}
-                    loading={paymentState === "processing"}
+                    disabled={otp.length !== 6 || paymentState === "processing" || paymentState === "loading" || !qrData}
+                    loading={paymentState === "processing" || paymentState === "loading"}
                     onClick={handleConfirmPayment}
                     className="rounded-xl py-4 text-base font-semibold uppercase tracking-wide"
                 >
-                    {paymentState === "processing" ? "Processing..." : "Confirm Payment"}
+                    {paymentState === "processing"
+                        ? "Processing..."
+                        : paymentState === "loading"
+                            ? "Preparing QR…"
+                            : "Confirm Payment"}
                 </Button>
 
                 <div className="text-center space-y-1">

@@ -26,18 +26,36 @@ export default function ResidentLayout({
         setAuthorized(true);
     }, [router]);
 
-    if (!authorized) {
-        return (
-            <div className="min-h-screen flex items-center justify-center text-white text-sm">
-                Checking access...
-            </div>
-        );
-    }
-
     return (
         <div className="min-h-screen bg-gradient-to-br from-[var(--primary-dark)] via-[var(--primary)] to-[var(--primary-light)] flex items-center justify-center p-4">
             <div className="w-full max-w-md">
-                {children}
+                {authorized ? (
+                    children
+                ) : (
+                    <div className="flex items-center justify-center gap-3 text-white/80 text-sm">
+                        <svg
+                            className="animate-spin w-5 h-5"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            aria-hidden="true"
+                        >
+                            <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                            />
+                            <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                            />
+                        </svg>
+                        <span>Loading your account…</span>
+                    </div>
+                )}
             </div>
         </div>
     );
