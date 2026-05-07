@@ -13,6 +13,7 @@ import {
     ChevronRightIcon,
     XMarkIcon,
     ArrowPathIcon,
+    ExclamationTriangleIcon,
 } from "@heroicons/react/24/outline";
 
 type Transaction = {
@@ -366,7 +367,10 @@ export default function TransactionsPage() {
                             {/* Flagged Info */}
                             {selectedTransaction.is_flagged && (
                                 <div className="p-4 rounded-lg bg-[var(--danger-soft)] border border-[var(--danger)]">
-                                    <div className="font-medium text-[var(--danger)] mb-1">⚠️ Flagged Transaction</div>
+                                    <div className="font-medium text-[var(--danger)] mb-1 flex items-center gap-1.5">
+                                        <ExclamationTriangleIcon className="w-4 h-4" />
+                                        Flagged Transaction
+                                    </div>
                                     <div className="text-sm">{selectedTransaction.flag_reason || "This transaction has been flagged for review."}</div>
                                     {selectedTransaction.tamper_score !== undefined && (
                                         <div className="text-sm mt-2">

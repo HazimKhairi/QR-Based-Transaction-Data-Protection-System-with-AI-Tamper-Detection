@@ -172,7 +172,7 @@ export default function DemoPage() {
         title: config.title,
         detail: isAnomaly
           ? `AI Isolation Forest flagged this transaction. Amount RM ${config.amount.toLocaleString()} sits outside the trained normal distribution. Anomaly score: ${proc.tamper_detection?.anomaly_score?.toFixed(4)}.`
-          : `Payment processed successfully. AES-256 decrypt + SHA-256 integrity ✓, AI anomaly score within normal bounds.`,
+          : `Payment processed successfully. AES-256 decrypt + SHA-256 integrity OK, AI anomaly score within normal bounds.`,
         amount: proc.amount ?? config.amount,
         transactionRef: proc.transaction_ref ?? gen.transaction_ref,
         anomalyScore: proc.tamper_detection?.anomaly_score,
@@ -365,7 +365,7 @@ export default function DemoPage() {
                 <CheckCircleIcon className="w-6 h-6 text-[var(--success)]" />
                 <span className="font-semibold">Normal Payment</span>
               </div>
-              <p className="text-xs text-[var(--text-muted)]">RM 150 maintenance fee. Standard amount, valid OTP. Expected: ✅ Completed.</p>
+              <p className="text-xs text-[var(--text-muted)]">RM 150 maintenance fee. Standard amount, valid OTP. Expected: Completed.</p>
               {scenarioRunning === "normal" && (
                 <div className="mt-2 text-xs text-[var(--success)]">Running...</div>
               )}
@@ -380,7 +380,7 @@ export default function DemoPage() {
                 <ExclamationTriangleIcon className="w-6 h-6 text-[var(--danger)]" />
                 <span className="font-semibold">Tampered QR</span>
               </div>
-              <p className="text-xs text-[var(--text-muted)]">QR payload mutated after generation. Expected: 🚨 Hash mismatch, blocked.</p>
+              <p className="text-xs text-[var(--text-muted)]">QR payload mutated after generation. Expected: Hash mismatch, blocked.</p>
               {scenarioRunning === "tampered" && (
                 <div className="mt-2 text-xs text-[var(--danger)]">Running...</div>
               )}
@@ -395,7 +395,7 @@ export default function DemoPage() {
                 <CpuChipIcon className="w-6 h-6 text-[var(--warning)]" />
                 <span className="font-semibold">Suspicious Activity</span>
               </div>
-              <p className="text-xs text-[var(--text-muted)]">RM 9,999.99 unusual amount. Expected: ⚠️ AI Isolation Forest flags it.</p>
+              <p className="text-xs text-[var(--text-muted)]">RM 9,999.99 unusual amount. Expected: AI Isolation Forest flags it.</p>
               {scenarioRunning === "suspicious" && (
                 <div className="mt-2 text-xs text-[var(--warning)]">Running...</div>
               )}
@@ -608,9 +608,12 @@ export default function DemoPage() {
                         <ExclamationTriangleIcon className="w-5 h-5" />
                         Tampering Detected - QR Rejected!
                       </div>
-                      <div className="text-[var(--text-muted)] text-xs mt-2">
-                        ✅ <strong>Security Working:</strong> The AI successfully detected the modified QR code and blocked it.
-                        This is how the system protects against fraudulent QR codes.
+                      <div className="text-[var(--text-muted)] text-xs mt-2 flex items-start gap-2">
+                        <CheckCircleIcon className="w-4 h-4 text-[var(--success)] flex-shrink-0 mt-0.5" />
+                        <span>
+                          <strong>Security Working:</strong> The AI successfully detected the modified QR code and blocked it.
+                          This is how the system protects against fraudulent QR codes.
+                        </span>
                       </div>
                     </>
                   ) : (
@@ -620,7 +623,10 @@ export default function DemoPage() {
               )}
               {tamperedQrImageUrl && (
                 <div>
-                  <div className="text-xs font-medium text-[var(--warning)] mb-2">⚠️ Simulated Tampered QR (Blocked)</div>
+                  <div className="text-xs font-medium text-[var(--warning)] mb-2 flex items-center gap-1.5">
+                    <ExclamationTriangleIcon className="w-3.5 h-3.5" />
+                    Simulated Tampered QR (Blocked)
+                  </div>
                   <img src={tamperedQrImageUrl} alt="Tampered QR" className="border-2 border-[var(--warning)] rounded-lg w-32 opacity-60" />
                 </div>
               )}
