@@ -46,7 +46,8 @@ class User(db.Model):
     role = db.Column(db.Enum(UserRole), default=UserRole.RESIDENT, nullable=False)
 
     # 2FA fields
-    totp_secret = db.Column(db.String(32), nullable=True)  # Encrypted
+    # Stores AES-encrypted TOTP secret (base64 of IV + ciphertext) — needs ample room
+    totp_secret = db.Column(db.String(255), nullable=True)
     is_2fa_enabled = db.Column(db.Boolean, default=False)
     is_2fa_verified = db.Column(db.Boolean, default=False)
 
