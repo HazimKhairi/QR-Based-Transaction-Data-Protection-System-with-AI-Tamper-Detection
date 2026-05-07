@@ -342,21 +342,24 @@ def process_transaction():
                     severity='warning'
                 )
 
-                # Email all admins about the flagged transaction
+                # Email admins who have BOTH email + fraud alert preferences enabled
                 admin_emails = [
                     a.email for a in User.query.filter(
                         User.role.in_([UserRole.ADMIN, UserRole.SUPER_ADMIN]),
                         User.is_active.is_(True),
+                        User.notify_email_enabled.is_(True),
+                        User.notify_fraud_alerts_enabled.is_(True),
                     ).all()
                 ]
-                send_tamper_alert_email(
-                    admin_emails=admin_emails,
-                    transaction_ref=transaction.transaction_ref,
-                    user_email=user.email,
-                    amount=transaction.amount,
-                    anomaly_score=detection_result['anomaly_score'],
-                    details=detection_result.get('details', 'AI detected anomaly'),
-                )
+                if admin_emails:
+                    send_tamper_alert_email(
+                        admin_emails=admin_emails,
+                        transaction_ref=transaction.transaction_ref,
+                        user_email=user.email,
+                        amount=transaction.amount,
+                        anomaly_score=detection_result['anomaly_score'],
+                        details=detection_result.get('details', 'AI detected anomaly'),
+                    )
 
                 # Store detection result
                 from app.models import TamperDetectionResult
@@ -392,8 +395,8 @@ def process_transaction():
                 ip_address=request.remote_addr
             )
 
-            # Email receipt to the resident
-            if transaction:
+            # Email receipt to the resident (only if user opted in)
+            if transaction and user.notify_email_enabled:
                 send_transaction_receipt(
                     to_email=user.email,
                     full_name=user.full_name,

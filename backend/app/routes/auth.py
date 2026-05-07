@@ -463,6 +463,10 @@ def update_profile():
             user.unit_number = data['unit_number']
         if 'community_name' in data:
             user.community_name = data['community_name']
+        if 'notify_email_enabled' in data:
+            user.notify_email_enabled = bool(data['notify_email_enabled'])
+        if 'notify_fraud_alerts_enabled' in data:
+            user.notify_fraud_alerts_enabled = bool(data['notify_fraud_alerts_enabled'])
 
         db.session.commit()
 

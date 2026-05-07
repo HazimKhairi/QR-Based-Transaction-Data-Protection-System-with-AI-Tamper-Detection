@@ -57,6 +57,10 @@ class User(db.Model):
     failed_login_attempts = db.Column(db.Integer, default=0)
     locked_until = db.Column(db.DateTime, nullable=True)
 
+    # Notification preferences
+    notify_email_enabled = db.Column(db.Boolean, default=True, nullable=False)
+    notify_fraud_alerts_enabled = db.Column(db.Boolean, default=True, nullable=False)
+
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -85,6 +89,8 @@ class User(db.Model):
             'is_2fa_enabled': self.is_2fa_enabled,
             'is_active': self.is_active,
             'is_verified': self.is_verified,
+            'notify_email_enabled': self.notify_email_enabled,
+            'notify_fraud_alerts_enabled': self.notify_fraud_alerts_enabled,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'last_login': self.last_login.isoformat() if self.last_login else None
         }
