@@ -85,9 +85,37 @@ export default function TransactionsPage() {
         }
     };
 
+    // Read URL params on first mount: ?flagged=1 (preset filter) and ?id=N (auto-open modal)
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("flagged") === "1") {
+            setFlaggedOnly(true);
+        }
+    }, []);
+
     useEffect(() => {
         loadTransactions(1);
     }, [flaggedOnly]);
+
+    // After transactions load, if ?id=N is in URL, auto-open that transaction's modal
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        if (transactions.length === 0) return;
+        const params = new URLSearchParams(window.location.search);
+        const idParam = params.get("id");
+        if (!idParam) return;
+        const targetId = Number(idParam);
+        const match = transactions.find((t) => t.id === targetId);
+        if (match) {
+            setSelectedTransaction(match);
+            setShowViewModal(true);
+            // Clean the query so reload doesn't keep re-opening
+            const url = new URL(window.location.href);
+            url.searchParams.delete("id");
+            window.history.replaceState({}, "", url.toString());
+        }
+    }, [transactions]);
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();

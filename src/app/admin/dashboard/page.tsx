@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import Header from "@/app/components/ui/Header";
 import StatCard from "@/app/components/ui/StatCard";
@@ -49,6 +50,7 @@ type FraudAlert = {
 };
 
 export default function AdminDashboard() {
+    const router = useRouter();
     const [stats, setStats] = useState<DashboardStats | null>(null);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [alerts, setAlerts] = useState<FraudAlert[]>([]);
@@ -207,7 +209,15 @@ export default function AdminDashboard() {
                                             <div className="text-xs text-[var(--danger)]">{alert.reason}</div>
                                         </div>
                                     </div>
-                                    <Button variant="danger" size="sm">
+                                    <Button
+                                        variant="danger"
+                                        size="sm"
+                                        onClick={() =>
+                                            router.push(
+                                                `/admin/transactions?id=${alert.transaction_ref}`
+                                            )
+                                        }
+                                    >
                                         Review
                                     </Button>
                                 </div>
@@ -216,7 +226,11 @@ export default function AdminDashboard() {
                     </div>
                     {alerts.length > 0 && (
                         <div className="mt-4 pt-4 border-t border-[var(--border-soft)]">
-                            <Button variant="ghost" fullWidth>
+                            <Button
+                                variant="ghost"
+                                fullWidth
+                                onClick={() => router.push("/admin/transactions?flagged=1")}
+                            >
                                 View All Alerts →
                             </Button>
                         </div>
