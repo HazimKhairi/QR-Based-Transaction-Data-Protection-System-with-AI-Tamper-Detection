@@ -44,10 +44,14 @@ export default function SettingsPage() {
         currentPassword: "",
         newPassword: "",
         confirmPassword: "",
+        otpCode: "",
     });
     const [passwordError, setPasswordError] = useState<string | null>(null);
     const [passwordSuccess, setPasswordSuccess] = useState(false);
     const [passwordLoading, setPasswordLoading] = useState(false);
+
+    // Logout-all state
+    const [logoutAllLoading, setLogoutAllLoading] = useState(false);
 
     // Profile form state
     const [profileForm, setProfileForm] = useState({
@@ -110,22 +114,49 @@ export default function SettingsPage() {
             return;
         }
 
+        if (profileForm.is2faEnabled && passwordForm.otpCode.length !== 6) {
+            setPasswordError("Enter the 6-digit code from your authenticator app");
+            return;
+        }
+
         setPasswordLoading(true);
         try {
-            await apiFetch("/api/auth/password/change", {
-                method: "POST",
-                body: {
-                    current_password: passwordForm.currentPassword,
-                    new_password: passwordForm.newPassword,
-                },
-            });
+            const body: Record<string, string> = {
+                current_password: passwordForm.currentPassword,
+                new_password: passwordForm.newPassword,
+            };
+            if (profileForm.is2faEnabled) {
+                body.otp_code = passwordForm.otpCode;
+            }
+            await apiFetch("/api/auth/password/change", { method: "POST", body });
             setPasswordSuccess(true);
-            setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+            setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "", otpCode: "" });
             setTimeout(() => setShowPasswordModal(false), 2000);
         } catch (err: any) {
             setPasswordError(err.message || "Failed to change password");
         } finally {
             setPasswordLoading(false);
+        }
+    };
+
+    const handleLogoutAll = async () => {
+        const confirmed = window.confirm(
+            "Logout from all devices? This will invalidate all your active sessions, including this one. You will need to log in again."
+        );
+        if (!confirmed) return;
+        setLogoutAllLoading(true);
+        try {
+            await apiFetch("/api/auth/logout-all", { method: "POST" });
+            // Clear local auth state and bounce to login
+            try {
+                localStorage.removeItem("token");
+                localStorage.removeItem("access_token");
+                localStorage.removeItem("user");
+            } catch {}
+            window.location.href = "/login";
+        } catch (err: any) {
+            alert("Failed to logout from all devices: " + (err.message || "unknown"));
+            setLogoutAllLoading(false);
         }
     };
 
@@ -394,10 +425,19 @@ export default function SettingsPage() {
                                         <GlobeAltIcon className="w-5 h-5 text-[var(--warning)]" />
                                         <div>
                                             <div className="font-medium">Active Sessions</div>
-                                            <div className="text-sm text-[var(--text-muted)]">2 devices logged in</div>
+                                            <div className="text-sm text-[var(--text-muted)]">
+                                                Sign out everywhere — invalidates all access tokens for your account
+                                            </div>
                                         </div>
                                     </div>
-                                    <Button variant="danger" size="sm">Logout All</Button>
+                                    <Button
+                                        variant="danger"
+                                        size="sm"
+                                        onClick={handleLogoutAll}
+                                        loading={logoutAllLoading}
+                                    >
+                                        Logout All
+                                    </Button>
                                 </div>
                             </div>
                         </CardWithHeader>
@@ -548,6 +588,27 @@ export default function SettingsPage() {
                                         onChange={(e) => setPasswordForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
                                     />
                                 </div>
+
+                                {profileForm.is2faEnabled && (
+                                    <div>
+                                        <label className="label flex items-center gap-1.5">
+                                            <ShieldCheckIcon className="w-4 h-4 text-[var(--primary)]" />
+                                            2FA Code
+                                        </label>
+                                        <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            maxLength={6}
+                                            placeholder="000000"
+                                            className="input text-center tracking-[0.5em] text-lg font-mono"
+                                            value={passwordForm.otpCode}
+                                            onChange={(e) => setPasswordForm(prev => ({ ...prev, otpCode: e.target.value.replace(/\D/g, "").slice(0, 6) }))}
+                                        />
+                                        <div className="text-xs text-[var(--text-muted)] mt-1">
+                                            Required because 2FA is enabled on your account
+                                        </div>
+                                    </div>
+                                )}
 
                                 {passwordError && (
                                     <div className="text-sm text-[var(--danger)]">{passwordError}</div>

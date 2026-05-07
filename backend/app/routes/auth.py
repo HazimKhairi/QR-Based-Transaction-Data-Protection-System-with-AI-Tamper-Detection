@@ -370,6 +370,46 @@ def logout():
         }), 500
 
 
+@auth_bp.route('/logout-all', methods=['POST'])
+@jwt_required()
+@swag_from({
+    'tags': ['Authentication'],
+    'summary': 'Logout from all devices',
+    'description': 'Invalidate all tokens issued before now for the current user',
+    'security': [{'Bearer': []}],
+    'responses': {
+        '200': {'description': 'All sessions revoked'}
+    }
+})
+def logout_all():
+    """Logout from every device by setting the user's tokens_valid_after cutoff to now."""
+    try:
+        user_id = get_jwt_identity()
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'success': False, 'error': 'User not found'}), 404
+
+        user.tokens_valid_after = datetime.utcnow()
+        db.session.commit()
+
+        auth_service.create_audit_log(
+            user_id=user.id,
+            action='logout_all_devices',
+            resource_type='user',
+            resource_id=user.id,
+            ip_address=request.remote_addr,
+            severity='warning',
+        )
+
+        return jsonify({
+            'success': True,
+            'message': 'All sessions revoked. You will need to log in again on every device.'
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @auth_bp.route('/profile', methods=['GET'])
 @jwt_required()
 @swag_from({
@@ -847,6 +887,21 @@ def change_password():
                 'success': False,
                 'error': 'Current password is incorrect'
             }), 401
+
+        # If 2FA is enabled, require an OTP from the authenticator app
+        if user.is_2fa_enabled:
+            otp_code = (request.json or {}).get('otp_code')
+            if not otp_code:
+                return jsonify({
+                    'success': False,
+                    'error': '2FA code required',
+                    'requires_2fa': True
+                }), 400
+            if not auth_service.verify_user_otp(user, otp_code):
+                return jsonify({
+                    'success': False,
+                    'error': 'Invalid 2FA code'
+                }), 401
 
         # Update password
         user.password_hash = auth_service.hash_password(data['new_password'])

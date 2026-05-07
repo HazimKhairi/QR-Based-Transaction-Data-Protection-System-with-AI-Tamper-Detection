@@ -78,6 +78,7 @@ class ChangePasswordSchema(Schema):
     """Schema for changing password"""
     current_password = fields.Str(required=True, load_only=True)
     new_password = fields.Str(required=True, load_only=True, validate=validate.Length(min=8, max=128))
+    otp_code = fields.Str(required=False, load_only=True, validate=validate.Length(min=6, max=6))
 
     @validates('new_password')
     def validate_password(self, value):

@@ -252,3 +252,29 @@ def register_jwt_handlers(app):
             'error': 'Token Revoked',
             'message': 'Token has been revoked'
         }), 401
+
+    @jwt.token_in_blocklist_loader
+    def check_if_token_revoked(jwt_header, jwt_payload):
+        """Reject token if it is blacklisted OR predates user's tokens_valid_after cutoff."""
+        from app.models import TokenBlacklist, User
+        from datetime import datetime
+
+        jti = jwt_payload.get('jti')
+        if jti and TokenBlacklist.query.filter_by(jti=jti).first():
+            return True
+
+        sub = jwt_payload.get('sub')
+        if sub is None:
+            return False
+        try:
+            user = User.query.get(int(sub))
+        except (TypeError, ValueError):
+            return False
+        if not user or not user.tokens_valid_after:
+            return False
+
+        iat = jwt_payload.get('iat')
+        if iat is None:
+            return False
+        token_issued_at = datetime.utcfromtimestamp(iat)
+        return token_issued_at < user.tokens_valid_after

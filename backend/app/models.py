@@ -61,6 +61,9 @@ class User(db.Model):
     notify_email_enabled = db.Column(db.Boolean, default=True, nullable=False)
     notify_fraud_alerts_enabled = db.Column(db.Boolean, default=True, nullable=False)
 
+    # "Logout from all devices" cutoff — any token issued before this time is rejected
+    tokens_valid_after = db.Column(db.DateTime, nullable=True)
+
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
