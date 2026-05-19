@@ -32,16 +32,25 @@ export default function UiMockupPage() {
   const [alerts, setAlerts] = useState<TamperItem[]>([]);
 
   useEffect(() => {
-    const payload = JSON.stringify({
-      type: "secure_demo",
-      resident: "Demo User",
-      amount: 25.5,
-      currency: "MYR",
-      ts: new Date().toISOString(),
-    });
-    QRCode.toDataURL(payload, { width: 220 })
-      .then(setQrUrl)
-      .catch(() => setQrUrl(""));
+    (async () => {
+      try {
+        const info = await apiFetch<{ otpauth_uri?: string }>("/api/transactions/demo/2fa-info");
+        const uri =
+          info?.otpauth_uri ||
+          "otpauth://totp/SecureQR:demo@qrtransaction.my?secret=JBSWY3DPEHPK3PXP&issuer=SecureQR";
+        const url = await QRCode.toDataURL(uri, { width: 220 });
+        setQrUrl(url);
+      } catch {
+        try {
+          const fallback =
+            "otpauth://totp/SecureQR:demo@qrtransaction.my?secret=JBSWY3DPEHPK3PXP&issuer=SecureQR";
+          const url = await QRCode.toDataURL(fallback, { width: 220 });
+          setQrUrl(url);
+        } catch {
+          setQrUrl("");
+        }
+      }
+    })();
   }, []);
 
   useEffect(() => {

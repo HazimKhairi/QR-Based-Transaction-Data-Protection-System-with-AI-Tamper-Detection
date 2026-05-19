@@ -43,6 +43,14 @@ type ProcessResponse = {
     };
 };
 
+type Demo2FAInfo = {
+    success: boolean;
+    secret: string;
+    otpauth_uri: string;
+    account: string;
+    issuer: string;
+};
+
 const DEMO_AMOUNT = 25.50;
 
 export default function ResidentPaymentPage() {
@@ -50,6 +58,7 @@ export default function ResidentPaymentPage() {
     const [qrUrl, setQrUrl] = useState<string>("");
     const [qrData, setQrData] = useState<string>("");
     const [transactionRef, setTransactionRef] = useState<string>("");
+    const [twoFASecret, setTwoFASecret] = useState<string>("");
     const [otp, setOtp] = useState<string>("");
     const [paymentState, setPaymentState] = useState<PaymentState>("loading");
     const [step, setStep] = useState<PaymentStep>("scan");
@@ -63,29 +72,33 @@ export default function ResidentPaymentPage() {
         setOtp("");
         setResultDetails(null);
         try {
-            const res = await apiFetch<GenerateQrResponse>("/api/transactions/demo/generate-qr", {
-                method: "POST",
-                body: {
-                    amount: DEMO_AMOUNT,
-                    description: "Resident demo payment",
-                    transaction_type: "maintenance_fee",
-                    expires_in_minutes: 30,
-                },
-            });
+            const [genRes, info] = await Promise.all([
+                apiFetch<GenerateQrResponse>("/api/transactions/demo/generate-qr", {
+                    method: "POST",
+                    body: {
+                        amount: DEMO_AMOUNT,
+                        description: "Resident demo payment",
+                        transaction_type: "maintenance_fee",
+                        expires_in_minutes: 30,
+                    },
+                }),
+                apiFetch<Demo2FAInfo>("/api/transactions/demo/2fa-info"),
+            ]);
 
-            if (!res.success || !res.qr_code_data) {
-                throw new Error(res.error || "Failed to generate QR");
+            if (!genRes.success || !genRes.qr_code_data) {
+                throw new Error(genRes.error || "Failed to generate QR");
             }
 
-            const dataUrl = await QRCode.toDataURL(res.qr_code_data, {
+            const dataUrl = await QRCode.toDataURL(info.otpauth_uri, {
                 width: 220,
                 margin: 2,
                 color: { dark: "#1E293B", light: "#FFFFFF" },
             });
 
             setQrUrl(dataUrl);
-            setQrData(res.qr_code_data);
-            setTransactionRef(res.transaction_ref || "");
+            setQrData(genRes.qr_code_data);
+            setTransactionRef(genRes.transaction_ref || "");
+            setTwoFASecret(info.secret || "");
             setPaymentState("idle");
         } catch (err: any) {
             setPaymentState("error");
@@ -248,18 +261,24 @@ export default function ResidentPaymentPage() {
                 {step === "scan" ? (
                     <>
                         <p className="text-center text-sm text-[var(--text-muted)]">
-                            Scan the QR Code to make a secure payment
+                            Scan with Google Authenticator, Authy, or 1Password
                         </p>
 
                         <div className="flex justify-center">
                             <div className="p-4 rounded-2xl bg-white shadow-lg border border-[var(--border-soft)]">
                                 {qrUrl ? (
-                                    <img src={qrUrl} alt="Payment QR Code" className="w-[200px] h-[200px]" />
+                                    <img src={qrUrl} alt="Authenticator pairing QR" className="w-[200px] h-[200px]" />
                                 ) : (
                                     <div className="w-[200px] h-[200px] bg-[var(--background)] rounded-lg animate-pulse" />
                                 )}
                             </div>
                         </div>
+
+                        {twoFASecret && (
+                            <p className="text-center text-[11px] font-mono text-[var(--text-muted)] break-all px-4">
+                                Manual key: {twoFASecret}
+                            </p>
+                        )}
 
                         {transactionRef && (
                             <p className="text-center text-xs font-mono text-[var(--text-muted)]">
