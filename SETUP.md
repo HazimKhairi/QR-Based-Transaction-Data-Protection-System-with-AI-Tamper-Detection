@@ -24,6 +24,23 @@ unzip qr-transaction-system.zip -d ~/projects
 cd ~/projects/web-admin
 ```
 
+### Quick path — one-shot setup script
+
+Steps 3-5 can be auto-run:
+
+```bash
+# Windows (double-click or run in cmd / PowerShell):
+setup.bat
+
+# macOS / Linux:
+bash setup.sh
+```
+
+The script copies the `.env` templates, creates the Python venv,
+installs `pip` and `npm` dependencies, and prints the remaining
+manual steps (start MySQL, create database, seed, run). Skip ahead
+to step 6 once it finishes.
+
 The folder structure:
 
 ```
