@@ -51,12 +51,18 @@ class Config:
 
     # 2FA settings
     OTP_ISSUER_NAME = "QR Transaction Protection"
-    OTP_VALID_WINDOW = 1  # Allow 1 step tolerance for time sync issues
+    # Window=2 accepts the current 30s step plus 60s on either side.
+    # Compensates for small client/server clock drift, common on fresh
+    # Windows boxes that haven't synced NTP yet.
+    OTP_VALID_WINDOW = int(os.environ.get('OTP_VALID_WINDOW', '2'))
 
     # Demo 2FA — fixed TOTP secret used by /api/transactions/demo/* endpoints.
-    # Set via env in production-like demos so it survives restarts; if unset,
-    # a random secret is generated on first call and cached on the app.
-    DEMO_TOTP_SECRET = os.environ.get('DEMO_TOTP_SECRET')
+    # Pinned by default so pairing an authenticator once survives every
+    # backend restart. Override via env for a fresh secret per deploy.
+    DEMO_TOTP_SECRET = os.environ.get(
+        'DEMO_TOTP_SECRET',
+        'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP'
+    )
     DEMO_TOTP_ACCOUNT = os.environ.get('DEMO_TOTP_ACCOUNT', 'demo@qrtransaction.my')
 
     # AI Model settings
