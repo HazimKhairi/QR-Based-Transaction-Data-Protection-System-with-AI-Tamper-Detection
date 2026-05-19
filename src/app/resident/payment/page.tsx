@@ -12,9 +12,12 @@ import {
     CheckCircleIcon,
     ArrowLeftIcon,
     LockClosedIcon,
+    QrCodeIcon,
+    ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 
 type PaymentState = "loading" | "idle" | "processing" | "success" | "flagged" | "error";
+type PaymentStep = "scan" | "verify";
 
 type GenerateQrResponse = {
     success: boolean;
@@ -49,11 +52,13 @@ export default function ResidentPaymentPage() {
     const [transactionRef, setTransactionRef] = useState<string>("");
     const [otp, setOtp] = useState<string>("");
     const [paymentState, setPaymentState] = useState<PaymentState>("loading");
+    const [step, setStep] = useState<PaymentStep>("scan");
     const [errorMessage, setErrorMessage] = useState<string>("");
     const [resultDetails, setResultDetails] = useState<ProcessResponse | null>(null);
 
     const generateQr = useCallback(async () => {
         setPaymentState("loading");
+        setStep("scan");
         setErrorMessage("");
         setOtp("");
         setResultDetails(null);
@@ -240,68 +245,128 @@ export default function ResidentPaymentPage() {
             </div>
 
             <div className="p-5 space-y-5">
-                <p className="text-center text-sm text-[var(--text-muted)]">
-                    Scan the QR Code to make a secure payment
-                </p>
+                {step === "scan" ? (
+                    <>
+                        <p className="text-center text-sm text-[var(--text-muted)]">
+                            Scan the QR Code to make a secure payment
+                        </p>
 
-                <div className="flex justify-center">
-                    <div className="p-4 rounded-2xl bg-white shadow-lg border border-[var(--border-soft)]">
-                        {qrUrl ? (
-                            <img src={qrUrl} alt="Payment QR Code" className="w-[200px] h-[200px]" />
-                        ) : (
-                            <div className="w-[200px] h-[200px] bg-[var(--background)] rounded-lg animate-pulse" />
+                        <div className="flex justify-center">
+                            <div className="p-4 rounded-2xl bg-white shadow-lg border border-[var(--border-soft)]">
+                                {qrUrl ? (
+                                    <img src={qrUrl} alt="Payment QR Code" className="w-[200px] h-[200px]" />
+                                ) : (
+                                    <div className="w-[200px] h-[200px] bg-[var(--background)] rounded-lg animate-pulse" />
+                                )}
+                            </div>
+                        </div>
+
+                        {transactionRef && (
+                            <p className="text-center text-xs font-mono text-[var(--text-muted)]">
+                                Ref: {transactionRef}
+                            </p>
                         )}
-                    </div>
-                </div>
 
-                {transactionRef && (
-                    <p className="text-center text-xs font-mono text-[var(--text-muted)]">
-                        Ref: {transactionRef}
-                    </p>
+                        <div className="flex items-center justify-center gap-2">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--success-soft)] text-[var(--success)] text-xs font-medium">
+                                <LockClosedIcon className="w-3.5 h-3.5" />
+                                AES Encryption Enabled
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--warning-soft)] text-[#CA8A04] text-xs font-medium">
+                                <ExclamationTriangleIcon className="w-3.5 h-3.5" />
+                                AI Fraud Detection Active
+                            </span>
+                        </div>
+
+                        <Button
+                            variant="success"
+                            fullWidth
+                            size="lg"
+                            disabled={!qrData || paymentState === "loading"}
+                            loading={paymentState === "loading"}
+                            onClick={() => setStep("verify")}
+                            className="rounded-xl py-4 text-base font-semibold uppercase tracking-wide"
+                        >
+                            {paymentState === "loading" ? "Preparing QR…" : "I've Scanned — Enter OTP"}
+                        </Button>
+
+                        <button
+                            type="button"
+                            onClick={generateQr}
+                            disabled={paymentState === "loading"}
+                            className="w-full flex items-center justify-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors disabled:opacity-50"
+                        >
+                            <ArrowPathIcon className="w-4 h-4" />
+                            Regenerate QR
+                        </button>
+                    </>
+                ) : (
+                    <>
+                        <div className="text-center space-y-1">
+                            <p className="text-sm text-[var(--text-muted)]">
+                                Open your authenticator app
+                            </p>
+                            {transactionRef && (
+                                <p className="text-xs font-mono text-[var(--text-muted)]">
+                                    Ref: {transactionRef}
+                                </p>
+                            )}
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="block text-center text-sm font-medium text-[var(--text-main)]">
+                                Enter 6-digit OTP Code
+                            </label>
+                            <PinInput
+                                length={6}
+                                onComplete={setOtp}
+                                onChange={setOtp}
+                                disabled={paymentState === "processing"}
+                                error={paymentState === "error"}
+                            />
+                            {errorMessage && (
+                                <p className="text-center text-sm text-[var(--danger)]">{errorMessage}</p>
+                            )}
+                        </div>
+
+                        <Button
+                            variant="success"
+                            fullWidth
+                            size="lg"
+                            disabled={otp.length !== 6 || paymentState === "processing" || !qrData}
+                            loading={paymentState === "processing"}
+                            onClick={handleConfirmPayment}
+                            className="rounded-xl py-4 text-base font-semibold uppercase tracking-wide"
+                        >
+                            {paymentState === "processing" ? "Processing..." : "Confirm Payment"}
+                        </Button>
+
+                        <div className="flex items-center justify-center gap-4">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setStep("scan");
+                                    setOtp("");
+                                    setErrorMessage("");
+                                }}
+                                className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors"
+                            >
+                                <QrCodeIcon className="w-4 h-4" />
+                                Back to QR
+                            </button>
+                            <span className="text-xs text-[var(--border-soft)]">|</span>
+                            <button
+                                type="button"
+                                onClick={generateQr}
+                                disabled={paymentState === "processing" || paymentState === "loading"}
+                                className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors disabled:opacity-50"
+                            >
+                                <ArrowPathIcon className="w-4 h-4" />
+                                Regenerate QR
+                            </button>
+                        </div>
+                    </>
                 )}
-
-                <div className="flex items-center justify-center gap-2">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--success-soft)] text-[var(--success)] text-xs font-medium">
-                        <LockClosedIcon className="w-3.5 h-3.5" />
-                        AES Encryption Enabled
-                    </span>
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--warning-soft)] text-[#CA8A04] text-xs font-medium">
-                        <ExclamationTriangleIcon className="w-3.5 h-3.5" />
-                        AI Fraud Detection Active
-                    </span>
-                </div>
-
-                <div className="space-y-3">
-                    <label className="block text-center text-sm font-medium text-[var(--text-main)]">
-                        Enter 6-digit OTP Code
-                    </label>
-                    <PinInput
-                        length={6}
-                        onComplete={setOtp}
-                        onChange={setOtp}
-                        disabled={paymentState === "processing" || paymentState === "loading"}
-                        error={paymentState === "error"}
-                    />
-                    {errorMessage && (
-                        <p className="text-center text-sm text-[var(--danger)]">{errorMessage}</p>
-                    )}
-                </div>
-
-                <Button
-                    variant="success"
-                    fullWidth
-                    size="lg"
-                    disabled={otp.length !== 6 || paymentState === "processing" || paymentState === "loading" || !qrData}
-                    loading={paymentState === "processing" || paymentState === "loading"}
-                    onClick={handleConfirmPayment}
-                    className="rounded-xl py-4 text-base font-semibold uppercase tracking-wide"
-                >
-                    {paymentState === "processing"
-                        ? "Processing..."
-                        : paymentState === "loading"
-                            ? "Preparing QR…"
-                            : "Confirm Payment"}
-                </Button>
 
                 <div className="text-center space-y-1">
                     <div className="flex items-center justify-center gap-2 text-xs text-[var(--text-muted)]">
