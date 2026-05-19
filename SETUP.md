@@ -24,22 +24,28 @@ unzip qr-transaction-system.zip -d ~/projects
 cd ~/projects/web-admin
 ```
 
-### Quick path — one-shot setup script
-
-Steps 3-5 can be auto-run:
+### Quick path — one-shot scripts
 
 ```bash
-# Windows (double-click or run in cmd / PowerShell):
-setup.bat
+# 1. INSTALL — copies .env files, creates venv, installs deps
+#    Windows:     setup.bat       (double-click)
+#    macOS/Linux: bash setup.sh
 
-# macOS / Linux:
-bash setup.sh
+# 2. (manual) Start MySQL in XAMPP and create the database:
+#    Windows:     "C:\xampp\mysql\bin\mysql.exe" -u root -e "CREATE DATABASE IF NOT EXISTS qr_transaction;"
+#    macOS:       /Applications/XAMPP/xamppfiles/bin/mysql -u root -e "CREATE DATABASE IF NOT EXISTS qr_transaction;"
+
+# 3. (one-time) Seed sample data:
+#    cd backend
+#    venv\Scripts\activate         (Windows) OR  source venv/bin/activate  (Unix)
+#    python seed_database.py
+
+# 4. RUN — kills clashing ports then launches backend + frontend
+#    Windows:     run.bat
+#    macOS/Linux: bash run.sh
 ```
 
-The script copies the `.env` templates, creates the Python venv,
-installs `pip` and `npm` dependencies, and prints the remaining
-manual steps (start MySQL, create database, seed, run). Skip ahead
-to step 6 once it finishes.
+Skip ahead to step 6 (smoke test) once `run.bat` / `run.sh` is up.
 
 The folder structure:
 
