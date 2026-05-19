@@ -728,12 +728,13 @@ def demo_generate_qr():
         description = data.get('description', 'Demo Payment')
         transaction_type = data.get('transaction_type', 'event_fee')
         expires_in_minutes = data.get('expires_in_minutes', 30)
+        include_totp = bool(data.get('include_totp', False))
 
         # Use demo user (first admin user or create anonymous demo)
         demo_user = User.query.filter_by(email='admin@qrtransaction.my').first()
         if not demo_user:
             demo_user = User.query.first()
-        
+
         if not demo_user:
             return jsonify({
                 'success': False,
@@ -747,7 +748,8 @@ def demo_generate_qr():
             transaction_type=transaction_type,
             expires_in_minutes=expires_in_minutes,
             ip_address=request.remote_addr,
-            device_info=request.headers.get('User-Agent')
+            device_info=request.headers.get('User-Agent'),
+            include_totp=include_totp
         )
 
         return jsonify(result), 201
@@ -813,15 +815,19 @@ def demo_process_transaction():
                 'verification': verification
             }), 400
 
-        # Real TOTP verification against the demo authenticator secret.
+        # Real TOTP verification. Prefer per-transaction secret embedded in
+        # the QR payload (issued when generate-qr was called with
+        # include_totp=true). Fall back to the shared demo secret for
+        # scripted scenarios that don't mint their own.
         if not (otp_code.isdigit() and len(otp_code) == 6):
             return jsonify({
                 'success': False,
                 'error': 'Invalid OTP format. Enter the 6-digit code from your authenticator app.'
             }), 400
 
-        demo_secret = _get_demo_totp_secret()
-        if not auth_service.verify_totp(demo_secret, otp_code):
+        per_tx_secret = (verification.get('payload') or {}).get('totp_secret')
+        validation_secret = per_tx_secret or _get_demo_totp_secret()
+        if not auth_service.verify_totp(validation_secret, otp_code):
             return jsonify({
                 'success': False,
                 'error': 'OTP verification failed. Make sure your device clock is synced and the code is current.'

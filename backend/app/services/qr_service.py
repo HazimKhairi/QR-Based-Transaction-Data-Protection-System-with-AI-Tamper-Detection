@@ -34,7 +34,8 @@ class QRService:
     def create_qr_transaction(self, user_id, amount, description=None,
                               transaction_type='other', recipient_id=None,
                               expires_in_minutes=30, ip_address=None,
-                              device_info=None):
+                              device_info=None, include_totp=False,
+                              totp_account=None):
         """
         Create a new QR-based transaction.
 
@@ -55,6 +56,17 @@ class QRService:
             # Generate unique transaction reference
             transaction_ref = self.generate_transaction_ref()
 
+            # Per-transaction TOTP secret + otpauth URI (so the QR shown to
+            # the user is a unique authenticator pairing per transaction).
+            tx_totp_secret = None
+            tx_otpauth_uri = None
+            if include_totp:
+                from app.services.auth_service import get_auth_service
+                _auth_service = get_auth_service()
+                tx_totp_secret = _auth_service.generate_totp_secret()
+                account_label = totp_account or f"tx-{transaction_ref}@qrtransaction.my"
+                tx_otpauth_uri = _auth_service.get_totp_uri(account_label, tx_totp_secret)
+
             # Create QR payload
             now = datetime.utcnow()
             qr_payload = {
@@ -69,6 +81,8 @@ class QRService:
                 'expires_at': (now + timedelta(minutes=expires_in_minutes)).isoformat(),
                 'version': '1.0'
             }
+            if tx_totp_secret:
+                qr_payload['totp_secret'] = tx_totp_secret
 
             # Encrypt QR payload
             encrypted_result = self.encryption.encrypt_qr_payload(qr_payload)
@@ -110,7 +124,7 @@ class QRService:
                 f"amount={amount}, user={user_id}"
             )
 
-            return {
+            response = {
                 'success': True,
                 'transaction_ref': transaction_ref,
                 'transaction_id': transaction.id,
@@ -120,6 +134,10 @@ class QRService:
                 'amount': amount,
                 'currency': 'MYR'
             }
+            if tx_otpauth_uri:
+                response['otpauth_uri'] = tx_otpauth_uri
+                response['totp_secret'] = tx_totp_secret
+            return response
 
         except Exception as e:
             db.session.rollback()

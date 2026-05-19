@@ -27,6 +27,8 @@ type GenerateQrResponse = {
     qr_code_hash?: string;
     expires_at?: string;
     amount?: number;
+    otpauth_uri?: string;
+    totp_secret?: string;
     error?: string;
 };
 
@@ -41,14 +43,6 @@ type ProcessResponse = {
         anomaly_score: number;
         is_anomaly: boolean;
     };
-};
-
-type Demo2FAInfo = {
-    success: boolean;
-    secret: string;
-    otpauth_uri: string;
-    account: string;
-    issuer: string;
 };
 
 const DEMO_AMOUNT = 25.50;
@@ -72,24 +66,30 @@ export default function ResidentPaymentPage() {
         setOtp("");
         setResultDetails(null);
         try {
-            const [genRes, info] = await Promise.all([
-                apiFetch<GenerateQrResponse>("/api/transactions/demo/generate-qr", {
+            const genRes = await apiFetch<GenerateQrResponse>(
+                "/api/transactions/demo/generate-qr",
+                {
                     method: "POST",
                     body: {
                         amount: DEMO_AMOUNT,
                         description: "Resident demo payment",
                         transaction_type: "maintenance_fee",
                         expires_in_minutes: 30,
+                        include_totp: true,
                     },
-                }),
-                apiFetch<Demo2FAInfo>("/api/transactions/demo/2fa-info"),
-            ]);
+                }
+            );
 
             if (!genRes.success || !genRes.qr_code_data) {
                 throw new Error(genRes.error || "Failed to generate QR");
             }
+            if (!genRes.otpauth_uri) {
+                throw new Error(
+                    "Backend did not return a per-transaction otpauth URI. Restart the backend so it picks up the include_totp support."
+                );
+            }
 
-            const dataUrl = await QRCode.toDataURL(info.otpauth_uri, {
+            const dataUrl = await QRCode.toDataURL(genRes.otpauth_uri, {
                 width: 220,
                 margin: 2,
                 color: { dark: "#1E293B", light: "#FFFFFF" },
@@ -98,7 +98,7 @@ export default function ResidentPaymentPage() {
             setQrUrl(dataUrl);
             setQrData(genRes.qr_code_data);
             setTransactionRef(genRes.transaction_ref || "");
-            setTwoFASecret(info.secret || "");
+            setTwoFASecret(genRes.totp_secret || "");
             setPaymentState("idle");
         } catch (err: any) {
             setPaymentState("error");
