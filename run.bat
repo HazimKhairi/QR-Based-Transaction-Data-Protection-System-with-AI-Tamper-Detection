@@ -24,6 +24,14 @@ for /f "tokens=5" %%P in ('netstat -ano ^| findstr :3000 ^| findstr LISTENING 2^
     taskkill /F /PID %%P >nul 2>nul
 )
 
+REM Kill any leftover Next.js dev workers for this project + clear the
+REM dev lock file so 'next dev' can acquire it cleanly.
+taskkill /F /FI "WINDOWTITLE eq QR Frontend*" >nul 2>nul
+if exist .next\dev\lock (
+    echo Removing stale .next\dev\lock
+    del /F /Q .next\dev\lock >nul 2>nul
+)
+
 echo.
 echo === Sanity check ===
 if not exist backend\venv\Scripts\python.exe (

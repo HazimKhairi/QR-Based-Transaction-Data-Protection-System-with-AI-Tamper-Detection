@@ -25,6 +25,21 @@ echo "=== Freeing ports 5000 and 3000 if busy ==="
 free_port 5000
 free_port 3000
 
+# Kill any next dev process pointing at THIS project (e.g. a previous
+# run on a different port still holding .next/dev/lock).
+STALE=$(pgrep -f "next dev.*$(pwd)" 2>/dev/null || true)
+if [ -n "$STALE" ]; then
+    echo "Killing stale next dev PIDs: $STALE"
+    kill -9 $STALE 2>/dev/null || true
+    sleep 1
+fi
+
+# Remove the dev lock if it's still on disk (orphaned by a hard kill)
+if [ -e .next/dev/lock ]; then
+    echo "Removing stale .next/dev/lock"
+    rm -f .next/dev/lock
+fi
+
 echo
 echo "=== Sanity check ==="
 [ -x backend/venv/bin/python ] || { echo "ERROR: backend/venv missing. Run bash setup.sh first."; exit 1; }
