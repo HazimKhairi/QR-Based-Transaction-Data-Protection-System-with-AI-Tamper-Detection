@@ -129,6 +129,21 @@ export default function LoginPage() {
               </p>
             </div>
 
+            <div className="mb-6 p-4 rounded-xl bg-[var(--primary-soft)] border border-[var(--primary)]/30 text-xs space-y-1.5">
+              <div className="font-semibold text-[var(--primary)] mb-1">Demo credentials</div>
+              <div className="grid grid-cols-[80px_1fr] gap-x-3 text-[var(--text-muted)] font-mono">
+                <span>Admin</span>
+                <span>admin@qrtransaction.my / Admin@123</span>
+                <span>Super</span>
+                <span>superadmin@qrtransaction.my / SuperAdmin@123</span>
+                <span>Resident</span>
+                <span>siti@example.com / Resident@123</span>
+              </div>
+              <div className="text-[var(--text-muted)] mt-1.5 italic">
+                Leave 2FA Code empty unless your account has it enabled.
+              </div>
+            </div>
+
             {error && (
               <div className="mb-6 p-4 rounded-xl bg-[var(--danger-soft)] border border-[var(--danger)] text-[var(--danger)] text-sm">
                 {error}

@@ -32,6 +32,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# but DO commit the templates so recipients know what env vars are needed
+!.env.example
+!.env.local.example
+!backend/.env.example
 
 # vercel
 .vercel
